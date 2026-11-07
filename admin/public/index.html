@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ShopSphere Admin</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="loginScreen" class="login-screen">
+    <form id="loginForm" class="login-card">
+      <h1>ShopSphere <span>Admin</span></h1>
+      <label>Email <input type="email" name="email" required autofocus /></label>
+      <label>Password <input type="password" name="password" required /></label>
+      <button type="submit">Sign in</button>
+      <p class="form-error" id="loginError"></p>
+    </form>
+  </div>
+
+  <div id="app" class="app hidden">
+    <aside class="sidebar">
+      <h1 class="brand">Shop<span>Sphere</span></h1>
+      <nav>
+        <button class="nav-btn active" data-view="overview">Overview</button>
+        <button class="nav-btn" data-view="products">Products</button>
+        <button class="nav-btn" data-view="orders">Orders</button>
+        <button class="nav-btn" data-view="users">Users</button>
+      </nav>
+      <div class="sidebar-links">
+        <a href="/kibana/app/dashboards#/view/marketplace-stats" target="_blank" rel="noopener">📊 Kibana dashboard</a>
+        <a href="/kafka-ui/" target="_blank" rel="noopener">🗂 Kafka topics</a>
+      </div>
+      <button id="logoutBtn" class="logout-btn">Sign out</button>
+    </aside>
+
+    <main class="content">
+      <section id="view-overview" class="view">
+        <h2>Overview</h2>
+        <div class="stat-cards">
+          <div class="stat-card"><span class="label">Users</span><span class="value" id="statUsers">-</span></div>
+          <div class="stat-card"><span class="label">Active listings</span><span class="value" id="statProducts">-</span></div>
+          <div class="stat-card"><span class="label">Orders</span><span class="value" id="statOrders">-</span></div>
+          <div class="stat-card"><span class="label">Revenue</span><span class="value" id="statRevenue">-</span></div>
+        </div>
+
+        <h3>Kafka event stream (last 24h)</h3>
+        <div class="stat-cards">
+          <div class="stat-card"><span class="label">Total events</span><span class="value" id="eventsTotal">-</span></div>
+        </div>
+        <table class="data-table" id="eventsByTypeTable">
+          <thead><tr><th>Event type</th><th>Count (24h)</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="hint">Full drill-down, histograms and live search: <a href="/kibana/app/dashboards#/view/marketplace-stats" target="_blank" rel="noopener">open the Kibana dashboard</a>.</p>
+      </section>
+
+      <section id="view-products" class="view hidden">
+        <h2>Products</h2>
+        <table class="data-table">
+          <thead><tr><th>Title</th><th>Seller</th><th>Price</th><th>Stock</th><th>Active</th><th></th></tr></thead>
+          <tbody id="productsTable"></tbody>
+        </table>
+      </section>
+
+      <section id="view-orders" class="view hidden">
+        <h2>Orders</h2>
+        <table class="data-table">
+          <thead><tr><th>ID</th><th>Buyer</th><th>Status</th><th>Total</th><th>Placed</th></tr></thead>
+          <tbody id="ordersTable"></tbody>
+        </table>
+      </section>
+
+      <section id="view-users" class="view hidden">
+        <h2>Users</h2>
+        <table class="data-table">
+          <thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Joined</th><th></th></tr></thead>
+          <tbody id="usersTable"></tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js"></script>
+</body>
+</html>

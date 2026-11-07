@@ -1,0 +1,295 @@
+x-security-defaults: &security-defaults
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+networks:
+  public:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: true   # no internet / host access - only reachable from other containers on this network
+
+volumes:
+  postgres-data:
+  es-data:
+  kafka-data:
+  redis-data:
+
+services:
+
+  # ---------------------------------------------------------------------
+  # Edge - the only service with published ports
+  # ---------------------------------------------------------------------
+  nginx:
+    <<: *security-defaults
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    networks:
+      - public
+      - backend
+    depends_on:
+      - frontend
+      - admin
+      - backend
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE, CHOWN, SETUID, SETGID]
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+    mem_limit: 128m
+
+  # ---------------------------------------------------------------------
+  # Application services
+  # ---------------------------------------------------------------------
+  backend:
+    <<: *security-defaults
+    build: ./backend
+    restart: unless-stopped
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      KAFKA_BROKERS: kafka:9092
+      ELASTIC_URL: http://elasticsearch:9200
+      ELASTIC_USER: elastic
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}
+    cap_drop: [ALL]
+    mem_limit: 256m
+
+  frontend:
+    <<: *security-defaults
+    build: ./frontend
+    restart: unless-stopped
+    networks:
+      - backend
+    environment:
+      PORT: 3000
+      API_PROXY_TARGET: http://backend:4000
+    cap_drop: [ALL]
+    mem_limit: 128m
+
+  admin:
+    <<: *security-defaults
+    build: ./admin
+    restart: unless-stopped
+    networks:
+      - backend
+    environment:
+      PORT: 3001
+      API_PROXY_TARGET: http://backend:4000
+      KIBANA_PATH: /kibana/
+      KAFKA_UI_PATH: /kafka-ui/
+    cap_drop: [ALL]
+    mem_limit: 128m
+
+  # ---------------------------------------------------------------------
+  # Data stores
+  # ---------------------------------------------------------------------
+  postgres:
+    <<: *security-defaults
+    image: postgres:16-alpine
+    restart: unless-stopped
+    networks:
+      - backend
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./backend/db/init:/docker-entrypoint-initdb.d:ro
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    <<: *security-defaults
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD}"]
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis-data:/data
+    networks:
+      - backend
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, CHOWN]
+    mem_limit: 128m
+
+  # ---------------------------------------------------------------------
+  # Kafka (KRaft mode - no zookeeper needed)
+  # ---------------------------------------------------------------------
+  kafka:
+    <<: *security-defaults
+    image: apache/kafka:3.7.2
+    restart: unless-stopped
+    networks:
+      - backend
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka-data:/tmp/kraft-combined-logs
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  kafka-ui:
+    <<: *security-defaults
+    image: provectuslabs/kafka-ui:latest
+    restart: unless-stopped
+    networks:
+      - backend
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_CLUSTERS_0_NAME: marketplace
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      SERVER_SERVLET_CONTEXT_PATH: /kafka-ui
+      AUTH_TYPE: LOGIN_FORM
+      SPRING_SECURITY_USER_NAME: ${KAFKA_UI_USER}
+      SPRING_SECURITY_USER_PASSWORD: ${KAFKA_UI_PASSWORD}
+    mem_limit: 256m
+
+  # ---------------------------------------------------------------------
+  # Kafka event consumers
+  # ---------------------------------------------------------------------
+  analytics-consumer:
+    <<: *security-defaults
+    build: ./analytics-consumer
+    restart: unless-stopped
+    networks:
+      - backend
+    depends_on:
+      kafka:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      ELASTIC_URL: http://elasticsearch:9200
+      ELASTIC_USER: elastic
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}
+    cap_drop: [ALL]
+    mem_limit: 128m
+
+  notification-consumer:
+    <<: *security-defaults
+    build: ./notification-consumer
+    restart: unless-stopped
+    networks:
+      - backend
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: kafka:9092
+    cap_drop: [ALL]
+    mem_limit: 96m
+
+  # ---------------------------------------------------------------------
+  # Elasticsearch + Kibana (stats / dashboard viewer)
+  # ---------------------------------------------------------------------
+  elasticsearch:
+    <<: *security-defaults
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    restart: unless-stopped
+    networks:
+      - backend
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "true"
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+
+  kibana:
+    <<: *security-defaults
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    restart: unless-stopped
+    networks:
+      - backend
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      ELASTICSEARCH_USERNAME: kibana_system
+      ELASTICSEARCH_PASSWORD: ${KIBANA_SYSTEM_PASSWORD}
+      SERVER_BASEPATH: /kibana
+      SERVER_REWRITEBASEPATH: "true"
+      SERVER_PUBLICBASEURL: https://${DOMAIN_NAME}/kibana
+    mem_limit: 768m
+
+  kibana-setup:
+    <<: *security-defaults
+    build: ./kibana-setup
+    networks:
+      - backend
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      kibana:
+        condition: service_started
+    environment:
+      ELASTIC_URL: http://elasticsearch:9200
+      KIBANA_URL: http://kibana:5601
+      ELASTIC_USER: elastic
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}
+      KIBANA_SYSTEM_PASSWORD: ${KIBANA_SYSTEM_PASSWORD}
+    restart: "no"
+    mem_limit: 64m

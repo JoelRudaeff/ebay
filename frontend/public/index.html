@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ShopSphere Marketplace</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a href="/" class="logo">Shop<span>Sphere</span></a>
+      <div class="search">
+        <input id="searchInput" type="text" placeholder="Search for anything..." />
+        <button id="searchBtn">Search</button>
+      </div>
+      <nav class="account-nav">
+        <span id="userGreeting" class="hidden"></span>
+        <button id="loginBtn" class="link-btn">Sign in</button>
+        <button id="sellBtn" class="link-btn hidden">Sell an item</button>
+        <button id="logoutBtn" class="link-btn hidden">Sign out</button>
+        <button id="cartBtn" class="cart-btn">🛒 Cart <span id="cartCount">0</span></button>
+      </nav>
+    </div>
+    <div class="categories" id="categoryBar"></div>
+  </header>
+
+  <main class="container">
+    <div class="toolbar">
+      <h1 id="pageTitle">All items</h1>
+      <select id="sortSelect">
+        <option value="newest">Newest first</option>
+        <option value="price_asc">Price: low to high</option>
+        <option value="price_desc">Price: high to low</option>
+      </select>
+    </div>
+    <div id="grid" class="grid"></div>
+    <p id="emptyState" class="empty hidden">No items match your search.</p>
+  </main>
+
+  <footer class="site-footer">
+    <p>ShopSphere &mdash; demo marketplace. <a href="/admin/" target="_blank" rel="noopener">Admin panel</a></p>
+  </footer>
+
+  <!-- Auth modal -->
+  <div id="authModal" class="modal hidden">
+    <div class="modal-card">
+      <button class="modal-close" data-close="authModal">&times;</button>
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="login">Sign in</button>
+        <button class="tab-btn" data-tab="register">Register</button>
+      </div>
+      <form id="loginForm" class="tab-panel">
+        <label>Email <input type="email" name="email" required /></label>
+        <label>Password <input type="password" name="password" required /></label>
+        <button type="submit">Sign in</button>
+        <p class="hint">Demo seller: seller@example.com / sellerpass123</p>
+        <p class="form-error" data-for="loginForm"></p>
+      </form>
+      <form id="registerForm" class="tab-panel hidden">
+        <label>Display name <input type="text" name="displayName" required /></label>
+        <label>Email <input type="email" name="email" required /></label>
+        <label>Password <input type="password" name="password" minlength="8" required /></label>
+        <button type="submit">Create account</button>
+        <p class="form-error" data-for="registerForm"></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Product detail modal -->
+  <div id="productModal" class="modal hidden">
+    <div class="modal-card wide">
+      <button class="modal-close" data-close="productModal">&times;</button>
+      <div id="productDetail"></div>
+    </div>
+  </div>
+
+  <!-- Cart drawer -->
+  <div id="cartModal" class="modal hidden">
+    <div class="modal-card">
+      <button class="modal-close" data-close="cartModal">&times;</button>
+      <h2>Your cart</h2>
+      <div id="cartItems"></div>
+      <div class="cart-total">Total: <strong id="cartTotal">$0.00</strong></div>
+      <button id="checkoutBtn">Checkout</button>
+      <p class="form-error" id="cartError"></p>
+    </div>
+  </div>
+
+  <!-- Sell item modal -->
+  <div id="sellModal" class="modal hidden">
+    <div class="modal-card">
+      <button class="modal-close" data-close="sellModal">&times;</button>
+      <h2>List a new item</h2>
+      <form id="sellForm">
+        <label>Title <input type="text" name="title" required /></label>
+        <label>Description <textarea name="description" rows="3"></textarea></label>
+        <label>Category
+          <select name="categoryId" id="sellCategorySelect"></select>
+        </label>
+        <label>Price (USD) <input type="number" name="price" min="0.01" step="0.01" required /></label>
+        <label>Condition
+          <select name="condition">
+            <option value="new">New</option>
+            <option value="used" selected>Used</option>
+            <option value="refurbished">Refurbished</option>
+          </select>
+        </label>
+        <label>Listing type
+          <select name="listingType">
+            <option value="fixed" selected>Fixed price</option>
+            <option value="auction">Auction</option>
+          </select>
+        </label>
+        <label>Stock quantity <input type="number" name="stockQty" min="1" value="1" /></label>
+        <label>Emoji icon <input type="text" name="imageEmoji" maxlength="4" value="📦" /></label>
+        <button type="submit">Publish listing</button>
+        <p class="form-error" data-for="sellForm"></p>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
